@@ -31,7 +31,16 @@
   // outstanding tasks, which is what needs a note. Matched by area + the
   // topic's current label text, since handover topics are plain editable
   // strings with no stable id.
-  var MANDATORY_ON_YES = { pick: { 'Outstanding pick tasks?': true } };
+  var MANDATORY_ON_YES = {
+    inbound: {
+      'Number of the loads remaining?': true,
+      'Put away remaining?': true,
+      'Booking in remaining?': true
+    },
+    pick: { 'Outstanding pick tasks?': true },
+    pack: { 'Unfinished orders in/on trolleys?': true },
+    despatch: { 'List missing collections?': true }
+  };
   function mandatoryOnForTopic(areaKey, label) {
     return (MANDATORY_ON_YES[areaKey] && MANDATORY_ON_YES[areaKey][label]) ? 'Yes' : 'No';
   }
