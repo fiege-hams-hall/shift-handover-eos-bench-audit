@@ -23,6 +23,19 @@
     despatch: ['List missing collections?', 'Yorks count completed?', 'No of yorks inside?', 'Whiteboard updated?']
   };
 
+  // Every handover topic normally requires a comment when it's answered
+  // "No" (that's the failing/needs-explanation state — e.g. "Whiteboard
+  // updated?" -> "No" means something's wrong). A handful of topics are
+  // phrased the other way round, where "Yes" is the state that needs
+  // explaining — "Outstanding pick tasks?" -> "Yes" means there ARE
+  // outstanding tasks, which is what needs a note. Matched by area + the
+  // topic's current label text, since handover topics are plain editable
+  // strings with no stable id.
+  var MANDATORY_ON_YES = { pick: { 'Outstanding pick tasks?': true } };
+  function mandatoryOnForTopic(areaKey, label) {
+    return (MANDATORY_ON_YES[areaKey] && MANDATORY_ON_YES[areaKey][label]) ? 'Yes' : 'No';
+  }
+
   var BENCH_AUDIT_FIELDS = [
     { key: 'auditor', type: 'text', label: 'Auditor' },
     { key: 'bench', type: 'select-number', label: 'Bench Number', min: 1, max: 60 },
@@ -587,7 +600,8 @@
   async function saveHandoverArea(comboKey, areaKey, draft, btnRow, errEl) {
     var missing = draft.topics.some(function (t) {
       if (!t.result) return true;
-      if (t.result === 'No' && !(t.note && t.note.trim())) return true;
+      var mandatoryOn = mandatoryOnForTopic(areaKey, t.label);
+      if (t.result === mandatoryOn && !(t.note && t.note.trim())) return true;
       return false;
     });
     var signoffMissing = !(draft.given && draft.given.trim()) || !(draft.received && draft.received.trim());
@@ -931,7 +945,8 @@
       function isHandoverValid() {
         var topicsOk = d.topics.every(function (t) {
           if (!t.result) return false;
-          if (t.result === 'No' && !(t.note && t.note.trim())) return false;
+          var mandatoryOn = mandatoryOnForTopic(area.key, t.label);
+          if (t.result === mandatoryOn && !(t.note && t.note.trim())) return false;
           return true;
         });
         return topicsOk && !!(d.given && d.given.trim()) && !!(d.received && d.received.trim());
@@ -944,7 +959,7 @@
 
       d.topics.forEach(function (t) {
         list.appendChild(buildYesNoRow({
-          label: t.label, options: ['Yes', 'No'], mandatoryOn: 'No',
+          label: t.label, options: ['Yes', 'No'], mandatoryOn: mandatoryOnForTopic(area.key, t.label),
           prefill: t,
           onAnswer: function (v) { t.result = v; updateHandoverValidity(); },
           onNote: function (v) { t.note = v; updateHandoverValidity(); }
@@ -957,7 +972,7 @@
       var saveBtn2 = el('button', { type: 'button', class: 'save-area-btn' }); saveBtn2.textContent = 'Save handover';
       var status2 = el('span', { class: 'save-status', 'data-visible': 'false' });
       saveRow2.appendChild(saveBtn2); saveRow2.appendChild(status2);
-      var errEl2 = el('p', { class: 'save-error', 'data-visible': 'false' }); errEl2.textContent = 'Answer every question, add a comment for any "No" answer, and sign off both names before saving.';
+      var errEl2 = el('p', { class: 'save-error', 'data-visible': 'false' }); errEl2.textContent = 'Answer every question, add a comment for any failing answer, and sign off both names before saving.';
       saveBtn2.addEventListener('click', function () { saveHandoverArea(comboKey, area.key, d, saveRow2, errEl2); });
       block.appendChild(saveRow2);
       block.appendChild(errEl2);
