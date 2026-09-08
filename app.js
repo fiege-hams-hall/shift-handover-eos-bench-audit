@@ -27,22 +27,22 @@
   // "No" (that's the failing/needs-explanation state — e.g. "Whiteboard
   // updated?" -> "No" means something's wrong). A handful of topics are
   // phrased the other way round, where "Yes" is the state that needs
-  // explaining — "Outstanding pick tasks?" -> "Yes" means there ARE
-  // outstanding tasks, which is what needs a note. Matched by area + the
-  // topic's current label text, since handover topics are plain editable
-  // strings with no stable id.
-  var MANDATORY_ON_YES = {
-    inbound: {
-      'Number of the loads remaining?': true,
-      'Put away remaining?': true,
-      'Booking in remaining?': true
-    },
-    pick: { 'Outstanding pick tasks?': true },
-    pack: { 'Unfinished orders in/on trolleys?': true },
-    despatch: { 'List missing collections?': true }
+  // explaining — "Any loads remaining?" -> "Yes" means there ARE loads
+  // remaining, which is what needs a note. Handover topics are plain
+  // editable strings with no stable id, and the live checklist text has
+  // already drifted from the wording below (e.g. "Any loads remaining?"
+  // vs. the original "Number of the loads remaining?"), so matching by
+  // label text isn't reliable — this matches by the topic's position in
+  // the list instead, which stays stable across a reword.
+  var MANDATORY_ON_YES_INDEX = {
+    inbound: [0, 1, 2],  // top 3: loads remaining / put away remaining / booking in remaining
+    pick: [0],           // Outstanding pick tasks?
+    pack: [1],           // Unfinished orders in/on trolleys?
+    despatch: [0]        // (Any) missing collections?
   };
-  function mandatoryOnForTopic(areaKey, label) {
-    return (MANDATORY_ON_YES[areaKey] && MANDATORY_ON_YES[areaKey][label]) ? 'Yes' : 'No';
+  function mandatoryOnForTopic(areaKey, idx) {
+    var idxs = MANDATORY_ON_YES_INDEX[areaKey];
+    return (idxs && idxs.indexOf(idx) !== -1) ? 'Yes' : 'No';
   }
 
   var BENCH_AUDIT_FIELDS = [
@@ -607,9 +607,9 @@
   }
 
   async function saveHandoverArea(comboKey, areaKey, draft, btnRow, errEl) {
-    var missing = draft.topics.some(function (t) {
+    var missing = draft.topics.some(function (t, idx) {
       if (!t.result) return true;
-      var mandatoryOn = mandatoryOnForTopic(areaKey, t.label);
+      var mandatoryOn = mandatoryOnForTopic(areaKey, idx);
       if (t.result === mandatoryOn && !(t.note && t.note.trim())) return true;
       return false;
     });
@@ -952,9 +952,9 @@
       // Every box must be filled before Save is clickable: every topic
       // answered Yes/No, a comment on any "No" answer, and both signoff names.
       function isHandoverValid() {
-        var topicsOk = d.topics.every(function (t) {
+        var topicsOk = d.topics.every(function (t, idx) {
           if (!t.result) return false;
-          var mandatoryOn = mandatoryOnForTopic(area.key, t.label);
+          var mandatoryOn = mandatoryOnForTopic(area.key, idx);
           if (t.result === mandatoryOn && !(t.note && t.note.trim())) return false;
           return true;
         });
@@ -966,9 +966,9 @@
         errEl2.setAttribute('data-visible', valid ? 'false' : 'true');
       }
 
-      d.topics.forEach(function (t) {
+      d.topics.forEach(function (t, idx) {
         list.appendChild(buildYesNoRow({
-          label: t.label, options: ['Yes', 'No'], mandatoryOn: mandatoryOnForTopic(area.key, t.label),
+          label: t.label, options: ['Yes', 'No'], mandatoryOn: mandatoryOnForTopic(area.key, idx),
           prefill: t,
           onAnswer: function (v) { t.result = v; updateHandoverValidity(); },
           onNote: function (v) { t.note = v; updateHandoverValidity(); }
