@@ -945,13 +945,18 @@
         var items = benchIncompleteItems();
         var valid = items.length === 0;
         saveBtn.disabled = !valid;
-        if (valid) {
+        // Only show the "still needed" banner once the auditor has actually
+        // touched this form — right after a save, the form resets to blank
+        // (ready for the next audit) and would otherwise immediately show
+        // the exact same banner, which reads like the previous save failed.
+        if (valid || !draft._touched) {
           errEl.setAttribute('data-visible', 'false');
         } else {
           errEl.textContent = 'Still needed: ' + items.join('; ') + '.';
           errEl.setAttribute('data-visible', 'true');
         }
       }
+      function onBenchFieldChanged() { draft._touched = true; updateBenchValidity(); }
 
       // Auditor
       var auditorRow = el('div', { class: 'topic-row' });
@@ -959,7 +964,7 @@
       auditorBody.appendChild(textEl('span', 'topic-label', 'Auditor'));
       var auditorNote = el('div', { class: 'topic-note', contenteditable: 'true', 'data-placeholder': 'Add auditor name…' });
       if (draft.auditor) auditorNote.textContent = draft.auditor;
-      auditorNote.addEventListener('input', function () { draft.auditor = auditorNote.textContent; updateBenchValidity(); });
+      auditorNote.addEventListener('input', function () { draft.auditor = auditorNote.textContent; onBenchFieldChanged(); });
       auditorBody.appendChild(auditorNote);
       auditorRow.appendChild(auditorBody);
       list.appendChild(auditorRow);
@@ -968,7 +973,7 @@
       var benchRow = el('div', { class: 'topic-row' });
       var benchBody = el('div', { class: 'topic-body' });
       benchBody.appendChild(textEl('span', 'topic-label', 'Bench Number'));
-      benchBody.appendChild(buildBenchPicker(draft.bench, function (v) { draft.bench = v; updateBenchValidity(); }));
+      benchBody.appendChild(buildBenchPicker(draft.bench, function (v) { draft.bench = v; onBenchFieldChanged(); }));
       benchRow.appendChild(benchBody);
       list.appendChild(benchRow);
 
@@ -978,7 +983,7 @@
       opBody.appendChild(textEl('span', 'topic-label', 'Op ID'));
       var opNote = el('div', { class: 'topic-note', contenteditable: 'true', 'data-placeholder': 'Add Op ID…' });
       if (draft.opId) opNote.textContent = draft.opId;
-      opNote.addEventListener('input', function () { draft.opId = opNote.textContent; updateBenchValidity(); });
+      opNote.addEventListener('input', function () { draft.opId = opNote.textContent; onBenchFieldChanged(); });
       opBody.appendChild(opNote);
       opRow.appendChild(opBody);
       list.appendChild(opRow);
@@ -988,8 +993,8 @@
         list.appendChild(buildYesNoRow({
           label: q.label, options: q.options, mandatoryOn: q.mandatoryOn, allowPhotos: !!q.photos, photosOnFail: !!q.photosOnFail,
           prefill: a,
-          onAnswer: function (v) { a.result = v; updateBenchValidity(); },
-          onNote: function (v) { a.note = v; updateBenchValidity(); },
+          onAnswer: function (v) { a.result = v; onBenchFieldChanged(); },
+          onNote: function (v) { a.note = v; onBenchFieldChanged(); },
           onAddPhotos: function (files) { handlePhotoFiles(a.photos, files); },
           onRemovePhoto: function (id) {
             var pos = a.photos.findIndex(function (p) { return p.id === id; });
@@ -1037,24 +1042,29 @@
         var items = handoverIncompleteItems();
         var valid = items.length === 0;
         saveBtn2.disabled = !valid;
-        if (valid) {
+        // Only show the "still needed" banner once this entry has actually
+        // been touched — right after a save, the form resets to blank (ready
+        // for the next entry) and would otherwise immediately show the exact
+        // same banner, which reads like the save that just succeeded failed.
+        if (valid || !d._touched) {
           errEl2.setAttribute('data-visible', 'false');
         } else {
           errEl2.textContent = 'Still needed: ' + items.join('; ') + '.';
           errEl2.setAttribute('data-visible', 'true');
         }
       }
+      function onHandoverFieldChanged() { d._touched = true; updateHandoverValidity(); }
 
       d.topics.forEach(function (t, idx) {
         list.appendChild(buildYesNoRow({
           label: t.label, options: ['Yes', 'No'], mandatoryOn: mandatoryOnForTopic(area.key, idx),
           prefill: t,
-          onAnswer: function (v) { t.result = v; updateHandoverValidity(); },
-          onNote: function (v) { t.note = v; updateHandoverValidity(); }
+          onAnswer: function (v) { t.result = v; onHandoverFieldChanged(); },
+          onNote: function (v) { t.note = v; onHandoverFieldChanged(); }
         }));
       });
       block.appendChild(list);
-      block.appendChild(buildSignoff(d.given, d.received, function (which, v) { d[which] = v; updateHandoverValidity(); }));
+      block.appendChild(buildSignoff(d.given, d.received, function (which, v) { d[which] = v; onHandoverFieldChanged(); }));
 
       var saveRow2 = el('div', { class: 'area-save-row' });
       var saveBtn2 = el('button', { type: 'button', class: 'save-area-btn' }); saveBtn2.textContent = 'Save handover';
