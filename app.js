@@ -219,7 +219,7 @@
       if (bRes.error) throw bRes.error;
       clearHistoryForDateRange(dateStr, dateStr);
       applyRowsToHistory(hRes.data, bRes.data);
-      renderMain();
+      safeRenderMain();
     } catch (e) {
       // leave existing (possibly empty) HISTORY for this date; picking the
       // date again will retry
@@ -274,7 +274,7 @@
     if (!supabase || readOnly) {
       photo.uploading = false;
       photo.error = "Can't upload here — kept for this session only.";
-      renderMain();
+      safeRenderMain();
       return;
     }
     try {
@@ -286,11 +286,11 @@
       var pub = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
       photo.path = pub && pub.data ? pub.data.publicUrl : path;
       photo.uploading = false;
-      renderMain();
+      safeRenderMain();
     } catch (err) {
       photo.uploading = false;
       photo.error = 'Upload failed — remove and try again.';
-      renderMain();
+      safeRenderMain();
     }
   }
 
@@ -1243,6 +1243,44 @@
         .subscribe();
     } catch (e) {}
   }
+
+  // renderMain() rebuilds the whole page from scratch, which replaces every
+  // input/contenteditable node in it. When that happens while someone has
+  // one of those fields focused — mid-typing a comment, an Op ID, a
+  // signoff name — the field they're typing into is destroyed out from
+  // under them: focus silently drops, and anything they type afterwards
+  // lands nowhere (not in the new field, not saved anywhere) until they
+  // notice and click back in. The Realtime refresh below is the main way
+  // this happens in practice, since it's driven entirely by OTHER people's
+  // saves — e.g. Despatch finishing their handover while Pick is still
+  // mid-comment — so it can land at any moment with zero warning. That
+  // silently-lost typing is exactly what shows up as "I added a comment
+  // but it still won't save": the comment the person sees on screen never
+  // actually made it into the saved draft. safeRenderMain() defers the
+  // rebuild until the focused field is blurred, instead of tearing it down
+  // mid-edit; isHandoverValid()/isBenchAuditValid() and the Save button's
+  // enabled state still update live on every keystroke regardless (they're
+  // wired directly to each field's own input handler, not to a render).
+  var renderDeferredForFocus = false;
+  function isEditingFocus() {
+    var ae = document.activeElement;
+    if (!ae || ae === document.body) return false;
+    if (ae.isContentEditable) return true;
+    var tag = ae.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+  function safeRenderMain() {
+    if (isEditingFocus()) { renderDeferredForFocus = true; return; }
+    renderMain();
+  }
+  document.addEventListener('focusout', function () {
+    if (!renderDeferredForFocus) return;
+    renderDeferredForFocus = false;
+    // Let the field's own blur/input handling finish updating the draft
+    // (result/note/etc.) before the deferred rebuild reads it back out.
+    setTimeout(function () { renderMain(); }, 0);
+  }, true);
+
   var refreshPending = false;
   function refreshFromRemote() {
     if (refreshPending) return;
@@ -1251,7 +1289,7 @@
       refreshPending = false;
       await fetchWindow();
       await fetchDateIfNeeded(view.date); // keep an out-of-window open date live too
-      renderMain();
+      safeRenderMain();
     }, 300);
   }
 
