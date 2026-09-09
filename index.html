@@ -550,12 +550,16 @@
   .save-area-btn:disabled, .save-audit-btn:disabled { opacity: .6; cursor: default; }
   .save-status {
     display: none;
-    font-size: 12.5px;
-    font-weight: 600;
+    font-size: 13.5px;
+    font-weight: 700;
     color: var(--focus);
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--focus) 14%, transparent);
   }
   .save-status[data-visible="true"] { display: inline-block; }
-  .save-status[data-kind="error"] { color: var(--status-attention-fg); }
+  .save-status[data-kind="error"] { color: var(--status-attention-fg); background: color-mix(in srgb, var(--status-attention-fg) 14%, transparent); }
+  .save-status[data-kind="saving"] { background: transparent; padding: 6px 0; }
   .save-error {
     display: none;
     font-size: 12.5px;
