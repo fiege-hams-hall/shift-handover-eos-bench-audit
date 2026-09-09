@@ -659,6 +659,10 @@
     border-radius: 8px; cursor: pointer; border: 1px solid var(--border-strong);
   }
   .passcode-cancel { background: var(--bg-surface-alt); color: var(--ink); }
+  .clear-date-box { max-width: 340px; }
+  .clear-date-picker { border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
+  .clear-date-control { margin-bottom: 12px; }
+  .clear-date-summary { margin: 0 0 4px; }
   .passcode-submit { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
   /* ---------- topics editor ---------- */
@@ -807,6 +811,7 @@
   <p class="status-banner" id="saveErrorNote" data-visible="false">Couldn't save your last change &mdash; it'll keep retrying. Check your connection before navigating away.</p>
   <button type="button" class="edit-topics-link" id="editTopicsBtn">Edit checklist topics</button>
   <button type="button" class="clear-data-link" id="clearDataBtn">Clear all summary data</button>
+  <button type="button" class="clear-data-link" id="clearDateBtn">Clear a specific date's data</button>
 </div>
 
 <main id="app">
@@ -835,6 +840,47 @@
     <div class="passcode-actions">
       <button type="button" class="passcode-cancel" id="confirmClearCancel">Cancel</button>
       <button type="button" class="confirm-clear-danger" id="confirmClearGo">Clear all data</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---- clear a specific date's data ---- -->
+<div class="passcode-overlay" id="clearDateOverlay" data-visible="false" role="dialog" aria-modal="true" aria-label="Clear a specific date's data">
+  <div class="passcode-box clear-date-box">
+    <h2 class="passcode-title">Clear a specific date's data</h2>
+    <p class="passcode-sub">Pick a date below, and narrow to one area and/or shift if you only want to clear part of it. This can't be undone.</p>
+    <div class="clear-date-picker">
+      <div class="date-picker-nav">
+        <button type="button" class="date-nav-btn" id="clearDateCalPrev" aria-label="Previous month">&lsaquo;</button>
+        <span class="date-picker-month" id="clearDateCalMonthLabel"></span>
+        <button type="button" class="date-nav-btn" id="clearDateCalNext" aria-label="Next month">&rsaquo;</button>
+      </div>
+      <div class="date-picker-grid" id="clearDateCalGrid"></div>
+    </div>
+    <label class="control clear-date-control">
+      <span class="control-label">Area</span>
+      <select id="clearDateArea" aria-label="Area to clear">
+        <option value="all">All areas</option>
+        <option value="inbound">Inbound</option>
+        <option value="pick">Pick</option>
+        <option value="pack">Pack</option>
+        <option value="despatch">Despatch</option>
+        <option value="benchaudit">EOS Bench Audit</option>
+      </select>
+    </label>
+    <label class="control clear-date-control">
+      <span class="control-label">Shift</span>
+      <select id="clearDateShift" aria-label="Shift to clear">
+        <option value="all">All shifts</option>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+        <option value="NS">NS</option>
+      </select>
+    </label>
+    <p class="passcode-sub clear-date-summary" id="clearDateSummary"></p>
+    <div class="passcode-actions">
+      <button type="button" class="passcode-cancel" id="clearDateCancel">Cancel</button>
+      <button type="button" class="confirm-clear-danger" id="clearDateGo" disabled>Clear this data</button>
     </div>
   </div>
 </div>
