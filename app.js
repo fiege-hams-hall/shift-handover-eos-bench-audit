@@ -603,7 +603,7 @@
     status.setAttribute('data-kind', kind);
     status.textContent = msg;
     status.setAttribute('data-visible', 'true');
-    if (kind === 'saved') setTimeout(function () { status.setAttribute('data-visible', 'false'); }, 2500);
+    if (kind === 'saved') setTimeout(function () { status.setAttribute('data-visible', 'false'); }, 4000);
   }
 
   async function saveHandoverArea(comboKey, areaKey, draft, btnRow, errEl) {
@@ -631,13 +631,23 @@
     delete DRAFTS[comboKey][areaKey];
     renderMain();
 
-    var saveBtn = btnRow.querySelector('.save-area-btn');
-    if (readOnly || !supabase) { setSaveStatus(btnRow, 'saved', 'Saved (this session only)'); return; }
-    if (saveBtn) saveBtn.disabled = true;
-    setSaveStatus(btnRow, 'saving', 'Saving…');
+    // renderMain() just tore down and rebuilt the whole page, so btnRow/errEl
+    // (captured from the DOM *before* this save started) are now detached —
+    // writing "Saving…"/"Saved" onto them was invisible to the user. Re-find
+    // this area's freshly-rebuilt save row so the confirmation actually shows.
+    // (This was the real cause behind "still needs comments, won't save"
+    // reports: a successful save silently cleared the form with zero visible
+    // confirmation, so the now-blank draft immediately tripped the same
+    // "answer every question… sign off both names" banner again, and people
+    // — having no sign anything had worked — filled it in and resubmitted,
+    // creating duplicate entries.)
+    var freshBlock = document.querySelector('.area-block[data-area="' + areaKey + '"]');
+    var freshRow = freshBlock ? freshBlock.querySelector('.area-save-row') : btnRow;
+
+    if (readOnly || !supabase) { setSaveStatus(freshRow, 'saved', 'Saved (this session only)'); return; }
+    setSaveStatus(freshRow, 'saving', 'Saving…');
     var ok = await tryInsert('handover_entries', row, 0);
-    if (saveBtn) saveBtn.disabled = false;
-    setSaveStatus(btnRow, ok ? 'saved' : 'error', ok ? 'Saved — cleared for the next entry' : "Couldn't save — try again in a moment");
+    setSaveStatus(freshRow, ok ? 'saved' : 'error', ok ? '✓ Saved — cleared for the next entry' : "Couldn't save — try again in a moment");
   }
 
   async function saveBenchAudit(comboKey, draft, btnRow, errEl) {
@@ -669,13 +679,15 @@
     delete DRAFTS[comboKey].benchaudit;
     renderMain();
 
-    var saveBtn = btnRow.querySelector('.save-audit-btn');
-    if (readOnly || !supabase) { setSaveStatus(btnRow, 'saved', 'Saved (this session only)'); return; }
-    if (saveBtn) saveBtn.disabled = true;
-    setSaveStatus(btnRow, 'saving', 'Saving…');
+    // Same fix as saveHandoverArea: btnRow is detached after renderMain()
+    // rebuilds the page, so re-find the fresh save row before showing status.
+    var freshBlock = document.querySelector('.area-block[data-area="benchaudit"]');
+    var freshRow = freshBlock ? freshBlock.querySelector('.area-save-row') : btnRow;
+
+    if (readOnly || !supabase) { setSaveStatus(freshRow, 'saved', 'Saved (this session only)'); return; }
+    setSaveStatus(freshRow, 'saving', 'Saving…');
     var ok = await tryInsert('bench_audits', row, 0);
-    if (saveBtn) saveBtn.disabled = false;
-    setSaveStatus(btnRow, ok ? 'saved' : 'error', ok ? 'Saved — form cleared for the next audit' : "Couldn't save — try again in a moment");
+    setSaveStatus(freshRow, ok ? 'saved' : 'error', ok ? '✓ Saved — form cleared for the next audit' : "Couldn't save — try again in a moment");
   }
 
   async function tryInsert(table, row, attempt) {
@@ -911,19 +923,34 @@
       // Every box on this form must be filled before Save is clickable:
       // auditor, bench, Op ID, every question answered, and a comment on any
       // failing answer.
-      function isBenchValid() {
-        var qMissing = draft.answers.some(function (a) { return !a.result; });
-        var commentMissing = draft.answers.some(function (a, i) {
+      // Returns a human-readable list of exactly what's still missing, so the
+      // banner below the Save button can say precisely what to fix instead of
+      // a generic reminder — the generic version left people staring at a
+      // fully-filled-looking form with no way to tell which single answer or
+      // comment was actually still blank.
+      function benchIncompleteItems() {
+        var items = [];
+        if (!(draft.auditor && draft.auditor.trim())) items.push('Auditor name');
+        if (!draft.bench) items.push('Bench number');
+        if (!(draft.opId && draft.opId.trim())) items.push('Op ID');
+        draft.answers.forEach(function (a, i) {
           var q = BENCH_AUDIT_QUESTIONS[i];
-          return a.result === q.mandatoryOn && !(a.note && a.note.trim());
+          if (!a.result) { items.push('"' + q.label + '" — needs an answer'); return; }
+          if (a.result === q.mandatoryOn && !(a.note && a.note.trim())) items.push('"' + q.label + '" — needs a comment');
         });
-        return !!(draft.auditor && draft.auditor.trim()) && !!draft.bench && !!(draft.opId && draft.opId.trim()) &&
-          !qMissing && !commentMissing;
+        return items;
       }
+      function isBenchValid() { return benchIncompleteItems().length === 0; }
       function updateBenchValidity() {
-        var valid = isBenchValid();
+        var items = benchIncompleteItems();
+        var valid = items.length === 0;
         saveBtn.disabled = !valid;
-        errEl.setAttribute('data-visible', valid ? 'false' : 'true');
+        if (valid) {
+          errEl.setAttribute('data-visible', 'false');
+        } else {
+          errEl.textContent = 'Still needed: ' + items.join('; ') + '.';
+          errEl.setAttribute('data-visible', 'true');
+        }
       }
 
       // Auditor
@@ -988,19 +1015,34 @@
 
       // Every box must be filled before Save is clickable: every topic
       // answered Yes/No, a comment on any "No" answer, and both signoff names.
-      function isHandoverValid() {
-        var topicsOk = d.topics.every(function (t, idx) {
-          if (!t.result) return false;
+      // handoverIncompleteItems() names exactly what's still missing (rather
+      // than a generic "answer every question" banner) — a checklist can grow
+      // a new question at any time via "Edit checklist", and a new question
+      // tucked lower on the page is easy to miss; naming it here is the
+      // difference between a confusing dead-end and something a team lead can
+      // act on immediately.
+      function handoverIncompleteItems() {
+        var items = [];
+        d.topics.forEach(function (t, idx) {
           var mandatoryOn = mandatoryOnForTopic(area.key, idx);
-          if (t.result === mandatoryOn && !(t.note && t.note.trim())) return false;
-          return true;
+          if (!t.result) { items.push('"' + t.label + '" — needs an answer'); return; }
+          if (t.result === mandatoryOn && !(t.note && t.note.trim())) items.push('"' + t.label + '" — needs a comment');
         });
-        return topicsOk && !!(d.given && d.given.trim()) && !!(d.received && d.received.trim());
+        if (!(d.given && d.given.trim())) items.push('"Handover given by" — needs a name');
+        if (!(d.received && d.received.trim())) items.push('"Handover received by" — needs a name');
+        return items;
       }
+      function isHandoverValid() { return handoverIncompleteItems().length === 0; }
       function updateHandoverValidity() {
-        var valid = isHandoverValid();
+        var items = handoverIncompleteItems();
+        var valid = items.length === 0;
         saveBtn2.disabled = !valid;
-        errEl2.setAttribute('data-visible', valid ? 'false' : 'true');
+        if (valid) {
+          errEl2.setAttribute('data-visible', 'false');
+        } else {
+          errEl2.textContent = 'Still needed: ' + items.join('; ') + '.';
+          errEl2.setAttribute('data-visible', 'true');
+        }
       }
 
       d.topics.forEach(function (t, idx) {
