@@ -715,6 +715,43 @@
     } catch (e) { return false; }
   }
 
+  // Scoped alternative to "Clear all data" — wipes just one date, optionally
+  // narrowed further to one area and/or one shift, instead of every date at
+  // once. areaKey is 'all' or one of HANDOVER_AREA_KEYS/'benchaudit';
+  // shiftKey is 'all' or one of SHIFTS.
+  async function clearDateData(dateStr, areaKey, shiftKey) {
+    var shifts = (shiftKey === 'all') ? SHIFTS : [shiftKey];
+    var areaKeys = (areaKey === 'all') ? HANDOVER_AREA_KEYS.concat(['benchaudit']) : [areaKey];
+    shifts.forEach(function (s) {
+      var ck = comboKeyOf(dateStr, s);
+      if (!HISTORY[ck]) return;
+      areaKeys.forEach(function (a) { HISTORY[ck][a] = []; });
+    });
+    safeRenderMain();
+    if (readOnly || !supabase) return true;
+    // handover_entries covers the four handover areas; bench_audits is its
+    // own table with no area column — only touch whichever of the two the
+    // selected area actually applies to.
+    var doHandover = areaKey !== 'benchaudit';
+    var doBench = (areaKey === 'all' || areaKey === 'benchaudit');
+    try {
+      if (doHandover) {
+        var hq = supabase.from('handover_entries').delete().eq('date', dateStr);
+        if (shiftKey !== 'all') hq = hq.eq('shift', shiftKey);
+        if (areaKey !== 'all') hq = hq.eq('area', areaKey);
+        var r1 = await hq;
+        if (r1.error) throw r1.error;
+      }
+      if (doBench) {
+        var bq = supabase.from('bench_audits').delete().eq('date', dateStr);
+        if (shiftKey !== 'all') bq = bq.eq('shift', shiftKey);
+        var r2 = await bq;
+        if (r2.error) throw r2.error;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
   // ======================================================================
   // Main render
   // ======================================================================
@@ -1060,7 +1097,8 @@
     pendingPasscodeAction = onSuccess;
     passcodeSub.textContent = kind === 'pastDate'
       ? 'Previous handovers are locked. Enter the shared passcode to view them.'
-      : (kind === 'editTopics' ? 'Enter the passcode to edit the checklist topics.' : 'Enter the passcode to continue.');
+      : (kind === 'editTopics' ? 'Enter the passcode to edit the checklist topics.'
+      : (kind === 'clearDate' ? 'Enter the passcode to clear this data.' : 'Enter the passcode to continue.'));
     passcodeInput.value = '';
     passcodeError.setAttribute('data-visible', 'false');
     passcodeOverlay.setAttribute('data-visible', 'true');
@@ -1148,6 +1186,77 @@
   document.getElementById('confirmClearGo').addEventListener('click', async function () {
     confirmClearOverlay.setAttribute('data-visible', 'false');
     await clearAllData();
+  });
+
+  // ======================================================================
+  // Clear a specific date's data (passcode-gated) — a scoped alternative to
+  // "Clear all data" above, so a mistake on one day (or one area/shift on
+  // that day) doesn't mean wiping every date to fix it.
+  // ======================================================================
+  var clearDateOverlay = document.getElementById('clearDateOverlay');
+  var clearDateCalMonthLabel = document.getElementById('clearDateCalMonthLabel');
+  var clearDateCalGrid = document.getElementById('clearDateCalGrid');
+  var clearDateAreaSelect = document.getElementById('clearDateArea');
+  var clearDateShiftSelect = document.getElementById('clearDateShift');
+  var clearDateSummaryEl = document.getElementById('clearDateSummary');
+  var clearDateGoBtn = document.getElementById('clearDateGo');
+  var clearDateSelected = null;
+  var clearDateCalViewYear, clearDateCalViewMonth;
+
+  function updateClearDateSummary() {
+    var areaLabel = clearDateAreaSelect.value === 'all' ? 'every area' :
+      (clearDateAreaSelect.value === 'benchaudit' ? 'EOS Bench Audit' : DEPT_LABELS[clearDateAreaSelect.value]);
+    var shiftLabel = clearDateShiftSelect.value === 'all' ? 'every shift' : (clearDateShiftSelect.value + ' shift');
+    clearDateGoBtn.disabled = !clearDateSelected;
+    clearDateSummaryEl.textContent = clearDateSelected
+      ? ('This permanently deletes ' + areaLabel + ', ' + shiftLabel + ', logged on ' + shortDateLabel(clearDateSelected) + '.')
+      : 'Pick a date above.';
+  }
+  function renderClearDateCalendar() {
+    clearDateCalMonthLabel.textContent = new Date(clearDateCalViewYear, clearDateCalViewMonth, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    clearDateCalGrid.innerHTML = '';
+    ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(function (d) { clearDateCalGrid.appendChild(textEl('span', 'date-picker-weekday', d)); });
+    var first = new Date(clearDateCalViewYear, clearDateCalViewMonth, 1);
+    var startWeekday = first.getDay();
+    var daysInMonth = new Date(clearDateCalViewYear, clearDateCalViewMonth + 1, 0).getDate();
+    for (var i = 0; i < startWeekday; i++) clearDateCalGrid.appendChild(el('span', { class: 'date-picker-day', 'data-empty': 'true' }));
+    for (var day = 1; day <= daysInMonth; day++) {
+      var dStr = clearDateCalViewYear + '-' + pad(clearDateCalViewMonth + 1) + '-' + pad(day);
+      var btn = el('button', { type: 'button', class: 'date-picker-day', 'data-selected': (dStr === clearDateSelected) ? 'true' : 'false' });
+      btn.textContent = String(day);
+      btn.addEventListener('click', function (dStrCaptured) {
+        return function () { clearDateSelected = dStrCaptured; renderClearDateCalendar(); updateClearDateSummary(); };
+      }(dStr));
+      clearDateCalGrid.appendChild(btn);
+    }
+  }
+  document.getElementById('clearDateBtn').addEventListener('click', function () {
+    clearDateSelected = view.date;
+    var d = dateFromStr(clearDateSelected);
+    clearDateCalViewYear = d.getFullYear(); clearDateCalViewMonth = d.getMonth();
+    clearDateAreaSelect.value = 'all'; clearDateShiftSelect.value = 'all';
+    renderClearDateCalendar();
+    updateClearDateSummary();
+    clearDateOverlay.setAttribute('data-visible', 'true');
+  });
+  document.getElementById('clearDateCalPrev').addEventListener('click', function () {
+    clearDateCalViewMonth--; if (clearDateCalViewMonth < 0) { clearDateCalViewMonth = 11; clearDateCalViewYear--; }
+    renderClearDateCalendar();
+  });
+  document.getElementById('clearDateCalNext').addEventListener('click', function () {
+    clearDateCalViewMonth++; if (clearDateCalViewMonth > 11) { clearDateCalViewMonth = 0; clearDateCalViewYear++; }
+    renderClearDateCalendar();
+  });
+  clearDateAreaSelect.addEventListener('change', updateClearDateSummary);
+  clearDateShiftSelect.addEventListener('change', updateClearDateSummary);
+  document.getElementById('clearDateCancel').addEventListener('click', function () { clearDateOverlay.setAttribute('data-visible', 'false'); });
+  clearDateGoBtn.addEventListener('click', function () {
+    if (!clearDateSelected) return;
+    var dateStr = clearDateSelected, areaKey = clearDateAreaSelect.value, shiftKey = clearDateShiftSelect.value;
+    clearDateOverlay.setAttribute('data-visible', 'false'); // out of the way before the passcode dialog stacks on top
+    requestPasscode('clearDate', async function () {
+      await clearDateData(dateStr, areaKey, shiftKey);
+    });
   });
 
   // ======================================================================
